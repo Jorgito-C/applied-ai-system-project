@@ -31,6 +31,27 @@ The `Scheduler` class goes beyond a basic task list with four algorithmic featur
 - **Recurring tasks** — `mark_task_complete(task_id)` automatically generates the next occurrence when a task is marked done. Daily tasks roll forward one day; weekly tasks roll forward seven days using Python's `timedelta`.
 - **Conflict detection** — `get_conflict_warnings()` scans the task list for any two tasks that share the same date and time slot and returns human-readable warning messages instead of crashing.
 
+## Testing PawPal+
+
+Run the full test suite with:
+
+```bash
+python -m pytest
+```
+
+The suite lives in `test/test_pawpal.py` and covers five behaviors:
+
+| Test | What it checks |
+|---|---|
+| `test_mark_complete_changes_task_status` | Calling `mark_complete()` flips the task's `completed` flag from `False` to `True` |
+| `test_add_task_increases_pet_task_count` | `pet.add_task()` actually appends to the pet's task list |
+| `test_sort_tasks_by_time_returns_chronological_order` | Tasks added out of order come back sorted earliest-first |
+| `test_daily_task_completion_creates_next_day_task` | Completing a daily task auto-generates the next occurrence with `due_date + 1 day` |
+| `test_conflict_detection_flags_same_date_and_time` | Two tasks at the same date/time slot produce a readable warning message |
+
+**Confidence level: ★★★★☆**
+The core scheduling behaviors are well covered and all 5 tests pass. I'm docking one star because the suite doesn't yet test edge cases like a pet with no tasks, a time budget of zero, or full round-trip persistence through JSON.
+
 ## Getting started
 
 ### Setup

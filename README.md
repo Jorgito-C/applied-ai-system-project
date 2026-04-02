@@ -6,9 +6,7 @@ A Streamlit app that helps a busy pet owner stay consistent with pet care by bui
 
 ## 📸 Demo
 
-> **Add your screenshot here.**
-> Run `streamlit run app.py`, take a screenshot of the running app, save it as `demo.png` in the project root, and replace this line with:
-> `![PawPal+ Demo](demo.png)`
+![PawPal+ Demo](demo.png)
 
 ---
 

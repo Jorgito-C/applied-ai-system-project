@@ -56,7 +56,7 @@ class Task:
     duration: int
     priority: int
     due_date: date
-    due_time: str
+    due_time: Optional[str] = None
     frequency: str = "daily"
     completed: bool = False
 
@@ -91,7 +91,7 @@ class Task:
             duration=data["duration"],
             priority=data["priority"],
             due_date=date.fromisoformat(data["due_date"]),
-            due_time=data["due_time"],
+            due_time=data.get("due_time"),
             frequency=data.get("frequency", "daily"),
             completed=data.get("completed", False),
         )
@@ -163,8 +163,8 @@ class Scheduler:
         self.tasks: List[Task] = tasks if tasks is not None else []
 
     def sort_tasks_by_time(self) -> List[Task]:
-        """Return tasks sorted by due date and due time."""
-        return sorted(self.tasks, key=lambda task: (task.due_date, task.due_time))
+        """Return tasks sorted by due date and due time; tasks with no time sort last."""
+        return sorted(self.tasks, key=lambda task: (task.due_date, task.due_time or "99:99"))
 
     def filter_tasks_by_pet(self, pet_name: str) -> List[Task]:
         """Return tasks that belong to a specific pet."""
@@ -211,7 +211,7 @@ class Scheduler:
         """Return tasks sorted by priority, due date, and due time."""
         return sorted(
             self.tasks,
-            key=lambda task: (-task.priority, task.due_date, task.due_time),
+            key=lambda task: (-task.priority, task.due_date, task.due_time or "99:99"),
         )
 
     def generate_daily_plan(self, time_available: Optional[int] = None) -> List[Task]:

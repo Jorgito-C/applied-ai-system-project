@@ -94,7 +94,7 @@ else:
                 duration=int(duration),
                 priority=priority,
                 due_date=date.today(),
-                due_time=due_time.strftime("%H:%M") if due_time else "08:00",
+                due_time=due_time.strftime("%H:%M") if due_time else None,
                 frequency=frequency,
             )
             owner.add_task(new_task)
@@ -127,7 +127,7 @@ else:
         st.caption("All tasks sorted chronologically.")
         st.table([
             {
-                "Time": t.due_time,
+                "Time": t.due_time or "Anytime",
                 "Pet": t.pet.name,
                 "Task": t.task_type,
                 "Duration (min)": t.duration,
@@ -195,7 +195,7 @@ if st.button("Generate schedule"):
 
         for t in plan:
             st.markdown(
-                f"**{t.due_time}** &nbsp;|&nbsp; {t.task_type} for **{t.pet.name}** "
+                f"**{t.due_time or 'Anytime'}** &nbsp;|&nbsp; {t.task_type} for **{t.pet.name}** "
                 f"&nbsp;— {t.duration} min &nbsp;· priority {t.priority}"
             )
 

@@ -98,9 +98,11 @@ class Task:
 
 
 class Owner:
-    def __init__(self, owner_id: int, name: str):
+    def __init__(self, owner_id: int, name: str, time_available: int = 120):
+        """Initialize an owner with an id, name, and daily time budget in minutes."""
         self.owner_id = owner_id
         self.name = name
+        self.time_available = time_available  # minutes available per day for pet care
         self.pets: List[Pet] = []
 
     def add_pet(self, pet: Pet) -> None:
@@ -123,6 +125,7 @@ class Owner:
         return {
             "owner_id": self.owner_id,
             "name": self.name,
+            "time_available": self.time_available,
             "pets": [pet.to_dict() for pet in self.pets],
         }
 
@@ -144,6 +147,7 @@ class Owner:
         owner = Owner(
             owner_id=data["owner_id"],
             name=data["name"],
+            time_available=data.get("time_available", 120),
         )
 
         for pet_data in data.get("pets", []):
@@ -183,7 +187,7 @@ class Scheduler:
                 else:
                     return None
 
-                new_task_id = max(existing_task.task_id for existing_task in self.tasks) + 1
+                new_task_id = (max(existing_task.task_id for existing_task in self.tasks) + 1) if self.tasks else 1
 
                 new_task = Task(
                     task_id=new_task_id,
@@ -210,9 +214,19 @@ class Scheduler:
             key=lambda task: (-task.priority, task.due_date, task.due_time),
         )
 
-    def generate_daily_plan(self) -> List[Task]:
-        """Generate a daily plan from the current task list."""
-        return self.sort_tasks_by_priority()
+    def generate_daily_plan(self, time_available: Optional[int] = None) -> List[Task]:
+        """Return highest-priority tasks that fit within the available time budget."""
+        sorted_tasks = self.sort_tasks_by_priority()
+        if time_available is None:
+            return sorted_tasks
+
+        plan: List[Task] = []
+        minutes_used = 0
+        for task in sorted_tasks:
+            if minutes_used + task.duration <= time_available:
+                plan.append(task)
+                minutes_used += task.duration
+        return plan
 
     def detect_conflicts(self) -> List[Task]:
         """Return tasks that share the same due date and due time."""

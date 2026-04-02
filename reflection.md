@@ -4,13 +4,33 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+The three core actions a user should be able to perform in PawPal+:
+
+1. **Enter owner and pet information** — The user provides basic details about themselves (name, available time per day) and their pet (name, species, age). This context anchors every scheduling decision; without it, the system has no way to apply constraints or personalize the plan.
+
+2. **Add and manage care tasks** — The user creates, edits, and removes pet care tasks such as walks, feedings, medication, grooming, and enrichment activities. Each task carries at minimum a duration (how long it takes) and a priority level (how critical it is), so the scheduler has the data it needs to reason about the day.
+
+3. **Generate and view a daily schedule** — The user triggers the scheduler, which fits tasks into the available time window in priority order and returns a concrete daily plan. The plan should also include a brief explanation of why tasks were included or excluded, so the owner understands the tradeoffs at a glance.
+
+The initial UML design uses four classes:
+
+- **`Owner`** — the top-level entity. Holds the owner's id, name, and (after revision) available time per day in minutes. Owns a list of `Pet` objects and is responsible for persistence: saving and loading the entire object graph to/from JSON.
+
+- **`Pet`** — represents a single animal. Stores id, name, species, and age. Owns a list of `Task` objects and exposes `add_task` / `get_tasks` so that the owner and scheduler can interact with a pet's workload without reaching into its internals directly.
+
+- **`Task`** — the atomic unit of pet care. Carries everything the scheduler needs to reason about one care item: `task_type` (walk, feeding, meds, etc.), `duration` in minutes, `priority` (higher = more important), `due_date`, `due_time`, `frequency` (daily/weekly), and a `completed` flag. It holds a back-reference to its `Pet` so the scheduler can label tasks by pet without a separate lookup.
+
+- **`Scheduler`** — stateless service class that operates on a flat list of `Task` objects. Responsible for sorting, filtering, conflict detection, recurring-task generation, and producing the daily plan. Intentionally separated from `Owner` and `Pet` so scheduling logic can be tested independently of data ownership.
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+After an AI review of the skeleton (`#file:pawpal_system.py`), three issues were identified and addressed:
+
+1. **Added `time_available` to `Owner`** — The README lists "time available" as a first-class constraint, but the original `Owner` had no such field. Without it the scheduler had no time budget to enforce. Added `time_available: int` (minutes per day, default 120) to `Owner.__init__`, `to_dict`, and `load_from_json`.
+
+2. **Made `generate_daily_plan()` actually respect a time budget** — The original implementation just called `sort_tasks_by_priority()` and returned every task. That is a sorted list, not a plan. Updated it to accept an optional `time_available` parameter and use a greedy loop: add tasks in priority order until the budget is exhausted. This aligns with the stated requirement to "consider constraints."
+
+3. **Guarded `max()` against an empty task list in `mark_task_complete()`** — `max(existing_task.task_id ...)` raises `ValueError` on an empty sequence. Added an `if self.tasks else 1` fallback so the method cannot crash when the list is unexpectedly empty.
 
 ---
 

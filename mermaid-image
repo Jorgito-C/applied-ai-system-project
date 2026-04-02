@@ -1,0 +1,65 @@
+classDiagram
+    class Owner {
+        +int owner_id
+        +str name
+        +int time_available
+        +List~Pet~ pets
+        +__init__(owner_id, name, time_available) None
+        +add_pet(pet: Pet) None
+        +add_task(task: Task) None
+        +get_all_tasks() List~Task~
+        +to_dict() dict
+        +save_to_json(filename: str) None
+        +load_from_json(filename: str) Owner
+    }
+
+    class Pet {
+        +int pet_id
+        +str name
+        +str species
+        +int age
+        +List~Task~ tasks
+        +add_task(task: Task) None
+        +get_tasks() List~Task~
+        +to_dict() dict
+        +from_dict(data: dict) Pet
+    }
+
+    class Task {
+        +int task_id
+        +Pet pet
+        +str task_type
+        +int duration
+        +int priority
+        +date due_date
+        +str due_time
+        +str frequency
+        +bool completed
+        +mark_complete() None
+        +reschedule(new_time: str) None
+        +to_dict() dict
+        +from_dict(data: dict, pet: Pet) Task
+    }
+
+    class Scheduler {
+        +List~Task~ tasks
+        +__init__(tasks: List~Task~) None
+        +sort_tasks_by_time() List~Task~
+        +sort_tasks_by_priority() List~Task~
+        +filter_tasks_by_pet(pet_name: str) List~Task~
+        +filter_tasks_by_status(completed: bool) List~Task~
+        +mark_task_complete(task_id: int) Task
+        +generate_daily_plan(time_available: int) List~Task~
+        +detect_conflicts() List~Task~
+        +get_conflict_warnings() List~str~
+    }
+
+    Owner "1" --> "0..*" Pet : owns
+    Pet "1" --> "0..*" Task : has
+    Task "0..*" --> "1" Pet : belongs to
+    Scheduler "1" --> "0..*" Task : schedules
+
+%% Changes from initial design:
+%% - Owner gained time_available (int) to support time-budget scheduling
+%% - generate_daily_plan now accepts optional time_available parameter
+%% - Scheduler is fully decoupled from Owner (receives task list directly)

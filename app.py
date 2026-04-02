@@ -5,16 +5,10 @@ from pawpal_system import Owner, Pet, Task, Scheduler
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
 # ── Session state bootstrap ───────────────────────────────────────────────────
-# Streamlit reruns the entire script on every interaction, so we store the
-# Owner object in st.session_state (a persistent dict) to avoid losing data.
-# The "if not in" guard means we only create a fresh Owner on the very first
-# run; every subsequent rerun reuses the same object already in the vault.
 if "owner" not in st.session_state:
     st.session_state.owner = Owner(owner_id=1, name="", time_available=120)
-
 if "next_pet_id" not in st.session_state:
     st.session_state.next_pet_id = 1
-
 if "next_task_id" not in st.session_state:
     st.session_state.next_task_id = 1
 # ─────────────────────────────────────────────────────────────────────────────
@@ -58,14 +52,13 @@ with st.form("add_pet_form"):
                 species=species,
                 age=int(age),
             )
-            owner.add_pet(new_pet)                      # Owner.add_pet() stores it
+            owner.add_pet(new_pet)
             st.session_state.next_pet_id += 1
             st.success(f"Added {new_pet.name} the {new_pet.species}!")
         else:
             st.warning("Please enter a pet name.")
 
 if owner.pets:
-    st.write("**Your pets:**")
     st.table([{"Name": p.name, "Species": p.species, "Age": p.age} for p in owner.pets])
 else:
     st.info("No pets added yet.")
@@ -104,29 +97,86 @@ else:
                 due_time=due_time.strftime("%H:%M") if due_time else "08:00",
                 frequency=frequency,
             )
-            owner.add_task(new_task)                    # Owner.add_task() → pet.add_task()
+            owner.add_task(new_task)
             st.session_state.next_task_id += 1
             st.success(f"Added '{task_type}' for {target_pet.name} (priority {priority}, {duration} min).")
 
-    all_tasks = owner.get_all_tasks()
-    if all_tasks:
-        st.write("**All tasks:**")
+st.divider()
+
+# ── Section 4: View & filter tasks ───────────────────────────────────────────
+st.subheader("View Tasks")
+
+all_tasks = owner.get_all_tasks()
+
+if not all_tasks:
+    st.info("No tasks yet. Add some above.")
+else:
+    scheduler = Scheduler(all_tasks)
+
+    # Proactive conflict warnings — shown before anything else
+    conflicts = scheduler.get_conflict_warnings()
+    if conflicts:
+        st.error(f"⚠️ {len(conflicts)} scheduling conflict(s) detected — two or more tasks share the same time slot. Reschedule one to avoid overlap.")
+        for msg in conflicts:
+            st.warning(msg)
+
+    tab_time, tab_pet, tab_pending = st.tabs(["By Time", "Filter by Pet", "Pending Only"])
+
+    with tab_time:
+        sorted_by_time = scheduler.sort_tasks_by_time()
+        st.caption("All tasks sorted chronologically.")
         st.table([
             {
+                "Time": t.due_time,
                 "Pet": t.pet.name,
                 "Task": t.task_type,
-                "Duration": t.duration,
+                "Duration (min)": t.duration,
                 "Priority": t.priority,
-                "Time": t.due_time,
                 "Frequency": t.frequency,
-                "Done": t.completed,
+                "Done": "✅" if t.completed else "⬜",
             }
-            for t in all_tasks
+            for t in sorted_by_time
         ])
+
+    with tab_pet:
+        if owner.pets:
+            selected = st.selectbox("Select a pet", [p.name for p in owner.pets], key="filter_pet")
+            pet_tasks = scheduler.filter_tasks_by_pet(selected)
+            if pet_tasks:
+                st.caption(f"Showing {len(pet_tasks)} task(s) for {selected}.")
+                st.table([
+                    {
+                        "Time": t.due_time,
+                        "Task": t.task_type,
+                        "Duration (min)": t.duration,
+                        "Priority": t.priority,
+                        "Done": "✅" if t.completed else "⬜",
+                    }
+                    for t in pet_tasks
+                ])
+            else:
+                st.info(f"No tasks found for {selected}.")
+
+    with tab_pending:
+        pending = scheduler.filter_tasks_by_status(completed=False)
+        if pending:
+            st.caption(f"{len(pending)} task(s) still pending.")
+            st.table([
+                {
+                    "Time": t.due_time,
+                    "Pet": t.pet.name,
+                    "Task": t.task_type,
+                    "Duration (min)": t.duration,
+                    "Priority": t.priority,
+                }
+                for t in pending
+            ])
+        else:
+            st.success("All tasks are complete!")
 
 st.divider()
 
-# ── Section 4: Generate daily plan ───────────────────────────────────────────
+# ── Section 5: Generate daily plan ───────────────────────────────────────────
 st.subheader("Generate Daily Plan")
 
 if st.button("Generate schedule"):
@@ -135,25 +185,23 @@ if st.button("Generate schedule"):
         st.warning("No tasks to schedule. Add some tasks first.")
     else:
         scheduler = Scheduler(all_tasks)
-
-        # Check for conflicts before showing the plan
-        warnings = scheduler.get_conflict_warnings()
-        if warnings:
-            for w in warnings:
-                st.warning(w)
-
         plan = scheduler.generate_daily_plan(time_available=owner.time_available)
         skipped = [t for t in scheduler.sort_tasks_by_priority() if t not in plan]
 
-        st.success(f"Scheduled {len(plan)} task(s) within your {owner.time_available}-minute budget.")
-        st.write("**Today's plan (highest priority first):**")
+        minutes_used = sum(t.duration for t in plan)
+        st.success(
+            f"Scheduled {len(plan)} task(s) — {minutes_used} of {owner.time_available} min used."
+        )
+
         for t in plan:
             st.markdown(
-                f"- **{t.due_time}** — {t.task_type} for **{t.pet.name}** "
-                f"({t.duration} min, priority {t.priority})"
+                f"**{t.due_time}** &nbsp;|&nbsp; {t.task_type} for **{t.pet.name}** "
+                f"&nbsp;— {t.duration} min &nbsp;· priority {t.priority}"
             )
 
         if skipped:
-            st.info(f"{len(skipped)} task(s) didn't fit in your time budget and were skipped:")
+            st.info(
+                f"{len(skipped)} task(s) didn't fit in your {owner.time_available}-min budget and were skipped:"
+            )
             for t in skipped:
-                st.markdown(f"  - {t.task_type} for {t.pet.name} ({t.duration} min)")
+                st.markdown(f"- {t.task_type} for {t.pet.name} ({t.duration} min, priority {t.priority})")

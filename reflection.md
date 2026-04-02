@@ -52,11 +52,33 @@ I think this is acceptable for now. The app is meant for a single owner with a s
 
 **a. How you used AI**
 
-I used AI mostly for design brainstorming and catching gaps I missed. The most useful prompts were ones where I shared the actual file and asked specific questions, like "does this class have everything it needs to support time-based scheduling?" That kind of targeted review surfaced the missing `time_available` field and the broken `generate_daily_plan()` much faster than re-reading my own code would have.
+I used Copilot across all three phases of the project — design, implementation, and testing — but in different ways at each stage.
+
+During design I used Copilot Chat with `#file:pawpal_system.py` to review my class skeleton and ask whether anything was missing for the scheduling requirements. That review found the missing `time_available` field on `Owner` and the fact that `generate_daily_plan()` wasn't actually enforcing a budget. Those were real gaps I had missed.
+
+During implementation the most effective feature was **Inline Chat** directly on a method. Asking "how should this sort tasks by time as strings in HH:MM format?" right inside the editor gave me an answer I could immediately apply and tweak, without breaking my flow. It was much faster than switching to a browser.
+
+During testing I used **Generate Tests** on the `Scheduler` class to get a starting draft, then edited each test to match my actual data model. The generated tests weren't always right out of the box — the AI didn't know my exact constructor signatures — but they gave me the right structure to work from.
+
+The most useful prompt pattern overall was sharing a specific file and asking a targeted question about one requirement, rather than asking something open-ended like "what should I build next?" Focused input got focused output.
 
 **b. Judgment and verification**
 
-When AI suggested adding full interval-overlap detection to the conflict checker, I didn't take it. The suggestion was technically correct, but it added a lot of code for a scenario that's unlikely in a single-owner app. I kept my simpler exact-match approach and documented the tradeoff instead. I verified my version was sufficient by writing a test that confirmed two tasks at the same exact time trigger a warning, which covers the realistic case I actually care about.
+The clearest moment where I pushed back on an AI suggestion was around conflict detection. Copilot suggested implementing full interval overlap detection — sorting tasks by start time and checking if `start + duration` overlaps the next task's start. The logic was correct, but it was about 20 lines of additional code and introduced new edge cases (what if tasks span midnight? what about tasks with no time set?).
+
+I decided the complexity wasn't justified for this app. The most realistic mistake a pet owner makes is scheduling two things at the exact same time, not accidentally overlapping a 30-minute walk with a feeding 20 minutes later. I kept my simpler exact-match dictionary approach, verified it with a test, and documented the tradeoff in section 2b so anyone reading the code understands the deliberate choice. That felt like the right call — not every technically correct suggestion is the right fit for the problem you're actually solving.
+
+**c. Separate chat sessions**
+
+Using separate chat sessions for design, implementation, and testing made a real difference. When I started a new session for testing, Copilot wasn't carrying context from the UML discussion or the earlier implementation decisions, which forced me to re-explain what I was building. That re-explanation was actually useful — it made me articulate my design choices clearly, and a couple of times I caught my own inconsistencies while typing the prompt.
+
+If I had done everything in one long session, the context would have drifted and I think the suggestions would have been less precise. Keeping sessions focused kept the AI's suggestions relevant.
+
+**d. Being the lead architect**
+
+The biggest thing I learned is that AI is a fast, opinionated collaborator — not a decision-maker. It will suggest something plausible almost immediately, and if you're not careful you'll accept it just because it compiles and looks reasonable. The job of the lead architect is to evaluate every suggestion against the actual requirements, the actual users, and the actual tradeoffs — not just ask "does this work?" but "is this the right thing to build?"
+
+In practice that meant: reading every AI-generated line before accepting it, asking why when something looked overly complex, and keeping the design goals visible so I had something to measure suggestions against. The `Scheduler` being a separate stateless class — not part of `Owner` — was my decision, not the AI's default. I pushed for it because I knew I wanted to test it independently. That kind of intentional architectural choice is exactly what the AI can't make for you.
 
 ---
 
@@ -83,12 +105,12 @@ I'm fairly confident the core scheduling behavior is correct for the happy path.
 
 **a. What went well**
 
-I'm most satisfied with how clean the separation between `Scheduler` and the data classes ended up. Because `Scheduler` just takes a list of tasks, I can test it in complete isolation without setting up a full owner and pet hierarchy every time.
+I'm most satisfied with how clean the separation between `Scheduler` and the data classes ended up. Because `Scheduler` just takes a flat list of tasks and has no dependency on `Owner` or `Pet` beyond reading task attributes, I can test every scheduling behavior in complete isolation — no need to build a full owner-pet-task hierarchy for every test. That decision made the test suite much simpler to write and much easier to trust.
 
 **b. What you would improve**
 
-If I had another pass, I'd replace the exact-time conflict detection with proper interval overlap checking. I'd also add a way to remove or edit tasks from the UI — right now you can only add them.
+If I had another iteration, the first thing I'd add is the ability to remove or edit tasks from the UI — right now you can only add them, which gets awkward fast. I'd also replace the exact-time conflict detection with proper duration-overlap checking, now that I have a clearer sense of how complex it actually is. And I'd add a persistence button in the UI so the owner's data survives a full page refresh, not just in-session reruns.
 
 **c. Key takeaway**
 
-The biggest thing I learned is that AI is most useful when you give it something concrete to react to. Vague prompts got me generic answers. Sharing the actual file and asking "what's missing for this specific requirement?" got me actionable feedback I could act on immediately.
+Working with AI on a real system taught me that the hardest part isn't generating code — it's knowing when to stop and think before accepting what was generated. AI is fast and confident, which makes it easy to keep moving. But moving fast in the wrong direction just means you have more to undo later. The most valuable skill I practiced in this project was slowing down at decision points — especially around architecture — and making sure I understood and agreed with every choice before it became load-bearing code.

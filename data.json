@@ -1,0 +1,73 @@
+{
+  "owner_id": 1,
+  "name": "Minh",
+  "time_available": 120,
+  "pets": [
+    {
+      "pet_id": 1,
+      "name": "Sofi",
+      "species": "Dog",
+      "age": 3,
+      "tasks": [
+        {
+          "task_id": 1,
+          "task_type": "Morning Walk",
+          "duration": 30,
+          "priority": 3,
+          "due_date": "2026-04-02",
+          "due_time": "08:00",
+          "frequency": "daily",
+          "completed": true
+        },
+        {
+          "task_id": 3,
+          "task_type": "Medication",
+          "duration": 5,
+          "priority": 4,
+          "due_date": "2026-04-02",
+          "due_time": "09:00",
+          "frequency": "weekly",
+          "completed": true
+        },
+        {
+          "task_id": 4,
+          "task_type": "Morning Walk",
+          "duration": 30,
+          "priority": 3,
+          "due_date": "2026-04-03",
+          "due_time": "08:00",
+          "frequency": "daily",
+          "completed": false
+        },
+        {
+          "task_id": 5,
+          "task_type": "Medication",
+          "duration": 5,
+          "priority": 4,
+          "due_date": "2026-04-09",
+          "due_time": "09:00",
+          "frequency": "weekly",
+          "completed": false
+        }
+      ]
+    },
+    {
+      "pet_id": 2,
+      "name": "Eevie",
+      "species": "Cat",
+      "age": 5,
+      "tasks": [
+        {
+          "task_id": 2,
+          "task_type": "Feed Breakfast",
+          "duration": 10,
+          "priority": 5,
+          "due_date": "2026-04-02",
+          "due_time": "08:00",
+          "frequency": "once",
+          "completed": false
+        }
+      ]
+    }
+  ]
+}

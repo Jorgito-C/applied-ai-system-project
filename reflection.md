@@ -4,33 +4,33 @@
 
 **a. Initial design**
 
-The three core actions a user should be able to perform in PawPal+:
+The three core actions I wanted a user to be able to do in PawPal+:
 
-1. **Enter owner and pet information** — The user provides basic details about themselves (name, available time per day) and their pet (name, species, age). This context anchors every scheduling decision; without it, the system has no way to apply constraints or personalize the plan.
+1. **Enter owner and pet information** — I needed a way to capture who the owner is and basic pet details before anything else. Without that context, the scheduler has nothing to work with. The owner's available time per day is especially important because it drives every scheduling decision.
 
-2. **Add and manage care tasks** — The user creates, edits, and removes pet care tasks such as walks, feedings, medication, grooming, and enrichment activities. Each task carries at minimum a duration (how long it takes) and a priority level (how critical it is), so the scheduler has the data it needs to reason about the day.
+2. **Add and manage care tasks** — I wanted the user to be able to create tasks like walks, feedings, medication, and grooming, each with a duration and a priority. That's the minimum data the scheduler needs to reason about the day.
 
-3. **Generate and view a daily schedule** — The user triggers the scheduler, which fits tasks into the available time window in priority order and returns a concrete daily plan. The plan should also include a brief explanation of why tasks were included or excluded, so the owner understands the tradeoffs at a glance.
+3. **Generate and view a daily schedule** — The whole point of the app is to produce a concrete plan. I wanted the output to not just list tasks but also explain what got included and what got left out, so the owner understands the tradeoffs.
 
-The initial UML design uses four classes:
+For my initial UML I designed four classes:
 
-- **`Owner`** — the top-level entity. Holds the owner's id, name, and (after revision) available time per day in minutes. Owns a list of `Pet` objects and is responsible for persistence: saving and loading the entire object graph to/from JSON.
+- **`Owner`** — the top-level container. I gave it the owner's id, name, and available time per day in minutes. It owns the list of pets and handles all persistence (saving and loading to JSON).
 
-- **`Pet`** — represents a single animal. Stores id, name, species, and age. Owns a list of `Task` objects and exposes `add_task` / `get_tasks` so that the owner and scheduler can interact with a pet's workload without reaching into its internals directly.
+- **`Pet`** — represents a single animal. I kept it simple: id, name, species, age, and a list of tasks. I gave it `add_task` and `get_tasks` so other parts of the system don't have to reach into its internals directly.
 
-- **`Task`** — the atomic unit of pet care. Carries everything the scheduler needs to reason about one care item: `task_type` (walk, feeding, meds, etc.), `duration` in minutes, `priority` (higher = more important), `due_date`, `due_time`, `frequency` (daily/weekly), and a `completed` flag. It holds a back-reference to its `Pet` so the scheduler can label tasks by pet without a separate lookup.
+- **`Task`** — the atomic unit of care. I put everything the scheduler needs here: `task_type`, `duration`, `priority`, `due_date`, `due_time`, `frequency`, and a `completed` flag. I also added a back-reference to the owning `Pet` so the scheduler can label tasks without a separate lookup.
 
-- **`Scheduler`** — stateless service class that operates on a flat list of `Task` objects. Responsible for sorting, filtering, conflict detection, recurring-task generation, and producing the daily plan. Intentionally separated from `Owner` and `Pet` so scheduling logic can be tested independently of data ownership.
+- **`Scheduler`** — I kept this as a separate service class that just takes a flat list of tasks. I didn't want scheduling logic mixed into `Owner` or `Pet` because I knew I'd want to test it independently.
 
 **b. Design changes**
 
-After an AI review of the skeleton (`#file:pawpal_system.py`), three issues were identified and addressed:
+When I ran an AI review on the skeleton, three gaps came up that I agreed with and fixed:
 
-1. **Added `time_available` to `Owner`** — The README lists "time available" as a first-class constraint, but the original `Owner` had no such field. Without it the scheduler had no time budget to enforce. Added `time_available: int` (minutes per day, default 120) to `Owner.__init__`, `to_dict`, and `load_from_json`.
+1. **Added `time_available` to `Owner`** — My original `Owner` had no time field at all, which meant the scheduler had no budget to enforce. I added `time_available: int` (defaulting to 120 minutes) to `__init__`, `to_dict`, and `load_from_json`.
 
-2. **Made `generate_daily_plan()` actually respect a time budget** — The original implementation just called `sort_tasks_by_priority()` and returned every task. That is a sorted list, not a plan. Updated it to accept an optional `time_available` parameter and use a greedy loop: add tasks in priority order until the budget is exhausted. This aligns with the stated requirement to "consider constraints."
+2. **Fixed `generate_daily_plan()` to actually respect the time budget** — My original version just called `sort_tasks_by_priority()` and returned everything. That's a sorted list, not a plan. I rewrote it to greedily add tasks in priority order until the budget runs out.
 
-3. **Guarded `max()` against an empty task list in `mark_task_complete()`** — `max(existing_task.task_id ...)` raises `ValueError` on an empty sequence. Added an `if self.tasks else 1` fallback so the method cannot crash when the list is unexpectedly empty.
+3. **Guarded `mark_task_complete()` against an empty task list** — The `max()` call would crash with a `ValueError` if `self.tasks` was ever empty. I added an `if self.tasks else 1` fallback to prevent that.
 
 ---
 
@@ -38,13 +38,13 @@ After an AI review of the skeleton (`#file:pawpal_system.py`), three issues were
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+My scheduler considers two constraints: **priority** (1–5, where 5 is most critical) and the **owner's daily time budget** in minutes. `generate_daily_plan()` picks tasks in descending priority order until the budget is exhausted. I decided to weight priority over time because skipping a medication is a much bigger deal than skipping an enrichment activity, even if both would fit in the schedule.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+My conflict detector only flags tasks that share an exact `(due_date, due_time)` match — it doesn't check for overlapping durations. So if I schedule a 30-minute walk at 08:00 and a feeding at 08:20, the system won't warn me even though they physically overlap.
+
+I think this is acceptable for now. The app is meant for a single owner with a small number of pets, and the most common mistake I'm guarding against is accidentally putting two things at exactly the same time. Full overlap detection would mean sorting tasks and comparing intervals, which adds a lot of complexity for an edge case most users won't hit often. I'd rather ship something simple and correct than something complete and brittle.
 
 ---
 
@@ -52,13 +52,11 @@ After an AI review of the skeleton (`#file:pawpal_system.py`), three issues were
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+I used AI mostly for design brainstorming and catching gaps I missed. The most useful prompts were ones where I shared the actual file and asked specific questions, like "does this class have everything it needs to support time-based scheduling?" That kind of targeted review surfaced the missing `time_available` field and the broken `generate_daily_plan()` much faster than re-reading my own code would have.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+When AI suggested adding full interval-overlap detection to the conflict checker, I didn't take it. The suggestion was technically correct, but it added a lot of code for a scenario that's unlikely in a single-owner app. I kept my simpler exact-match approach and documented the tradeoff instead. I verified my version was sufficient by writing a test that confirmed two tasks at the same exact time trigger a warning, which covers the realistic case I actually care about.
 
 ---
 
@@ -66,13 +64,18 @@ After an AI review of the skeleton (`#file:pawpal_system.py`), three issues were
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+I wrote five tests:
+- `test_mark_complete_changes_task_status` — confirms that calling `mark_complete()` flips the flag
+- `test_add_task_increases_pet_task_count` — confirms that `pet.add_task()` actually appends to the list
+- `test_sort_tasks_by_time_returns_chronological_order` — confirms tasks come back in time order regardless of insertion order
+- `test_daily_task_completion_creates_next_day_task` — confirms that completing a daily task auto-generates tomorrow's copy with the correct date
+- `test_conflict_detection_flags_same_date_and_time` — confirms a warning is raised when two tasks share the same slot
+
+These felt like the most important behaviors to lock down because they're the ones where a silent bug would give the owner wrong information without any error.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+I'm fairly confident the core scheduling behavior is correct for the happy path. The main edge cases I'd want to test next are: what happens if the owner's time budget is 0, what happens when all tasks have the same priority, and whether `load_from_json` fully round-trips a schedule without data loss.
 
 ---
 
@@ -80,12 +83,12 @@ After an AI review of the skeleton (`#file:pawpal_system.py`), three issues were
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+I'm most satisfied with how clean the separation between `Scheduler` and the data classes ended up. Because `Scheduler` just takes a list of tasks, I can test it in complete isolation without setting up a full owner and pet hierarchy every time.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+If I had another pass, I'd replace the exact-time conflict detection with proper interval overlap checking. I'd also add a way to remove or edit tasks from the UI — right now you can only add them.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+The biggest thing I learned is that AI is most useful when you give it something concrete to react to. Vague prompts got me generic answers. Sharing the actual file and asking "what's missing for this specific requirement?" got me actionable feedback I could act on immediately.

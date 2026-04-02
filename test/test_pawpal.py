@@ -3,7 +3,7 @@ from pawpal_system import Pet, Task, Scheduler
 
 
 def test_mark_complete_changes_task_status():
-    pet = Pet(pet_id=1, name="Milo", species="Dog", age=3)
+    pet = Pet(pet_id=1, name="Sofi", species="Dog", age=3)
     task = Task(
         task_id=1,
         pet=pet,
@@ -21,7 +21,7 @@ def test_mark_complete_changes_task_status():
 
 
 def test_add_task_increases_pet_task_count():
-    pet = Pet(pet_id=1, name="Luna", species="Cat", age=5)
+    pet = Pet(pet_id=1, name="Eevie", species="Cat", age=5)
     task = Task(
         task_id=2,
         pet=pet,
@@ -39,7 +39,7 @@ def test_add_task_increases_pet_task_count():
 
 
 def test_sort_tasks_by_time_returns_chronological_order():
-    pet = Pet(pet_id=1, name="Milo", species="Dog", age=3)
+    pet = Pet(pet_id=1, name="Sofi", species="Dog", age=3)
 
     task1 = Task(
         task_id=1,
@@ -81,7 +81,7 @@ def test_sort_tasks_by_time_returns_chronological_order():
 
 
 def test_daily_task_completion_creates_next_day_task():
-    pet = Pet(pet_id=1, name="Milo", species="Dog", age=3)
+    pet = Pet(pet_id=1, name="Sofi", species="Dog", age=3)
     today = date.today()
 
     task = Task(
@@ -107,8 +107,8 @@ def test_daily_task_completion_creates_next_day_task():
 
 
 def test_conflict_detection_flags_same_date_and_time():
-    pet1 = Pet(pet_id=1, name="Milo", species="Dog", age=3)
-    pet2 = Pet(pet_id=2, name="Luna", species="Cat", age=5)
+    pet1 = Pet(pet_id=1, name="Sofi", species="Dog", age=3)
+    pet2 = Pet(pet_id=2, name="Eevie", species="Cat", age=5)
     today = date.today()
 
     task1 = Task(

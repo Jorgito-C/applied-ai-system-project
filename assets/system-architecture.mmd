@@ -1,0 +1,42 @@
+%% PawPal+ system architecture (Step 2: design diagram)
+%% Render: paste into https://mermaid.live or use Mermaid CLI; export PNG to assets/ for portfolio screenshots.
+
+flowchart TB
+  subgraph in["Input"]
+    H["Human: budget, pets, tasks"]
+    UI["Streamlit app.py / CLI main.py"]
+  end
+
+  subgraph proc["Process"]
+    DM["Domain: Owner, Pet, Task"]
+    AP["AgenticPlanner"]
+    GM["Gemini: JSON task IDs"]
+    VAL["Guardrails: IDs, budget, completed"]
+    SCH["Scheduler: greedy plan, sort, conflicts"]
+  end
+
+  subgraph out["Output"]
+    RES["Plan, skipped tasks, source, notes"]
+  end
+
+  subgraph verify["Where AI is checked"]
+    AUTO["pytest: fallback + guardrails"]
+    LOG["pawpal_ai.log"]
+    HR["Human: conflict UI, planner source, notes expander"]
+  end
+
+  H --> UI
+  UI --> DM
+  DM --> AP
+  AP --> GM
+  GM --> VAL
+  VAL -->|accept| RES
+  VAL -->|reject or empty| SCH
+  AP -->|no API / parse error| SCH
+  DM --> SCH
+  SCH --> RES
+
+  AP --> LOG
+  AUTO -.-> AP
+  HR -.-> UI
+  HR -.-> RES

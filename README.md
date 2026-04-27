@@ -74,6 +74,11 @@ That interaction matters to me because it proves the “AI upgrade” didn’t r
   - Execute/Fallback: valid output is used; invalid/unavailable AI automatically falls back to deterministic scheduling
 - Planner emits operational logs to `pawpal_ai.log` for reproducibility and debugging
 
+### Stretch: Agentic workflow enhancement (observable multi-step trace)
+- Every `plan_day()` run records a **`steps`** list: numbered phases such as listing open tasks, reading the owner time budget, computing a **Scheduler** baseline, building the prompt, calling the model (with a **truncated raw response** preview for transparency), JSON parse, ID filtering, budget enforcement, and a final **Decide** branch (Gemini vs fallback).
+- In Streamlit, expand **“Agent trace (multi-step reasoning)”** after you generate a schedule to watch the chain end-to-end. `main.py` prints the same trace in the terminal.
+- I used **Cursor Agent mode** to help implement this cleanly across `ai_planner.py`, `app.py`, and `main.py` without breaking existing guardrails or tests.
+
 ### Conflict Detection
 - `get_conflict_warnings()` scans for any two tasks sharing the same date and time slot
 - Warnings appear as a **red banner** at the top of the View Tasks section the moment a conflict exists — before you generate a plan — so you can fix it immediately
@@ -218,7 +223,7 @@ I went into this thinking the “hard part” would be calling Gemini. The hard 
 
 The biggest mindset shift for me was treating the model like a fast intern: great for drafting a candidate plan, terrible as a source of truth. Putting validation in Python—boring, explicit code—made the AI feature feel *safer*, not scarier.
 
-If you want the longer version (including ethics and collaboration details), I wrote it up in `reflection.md`.
+If you want the longer version—design, testing, collaboration, and **ethics (Step 5)**—I wrote it up in `reflection.md` (see **section 6, Reflection and ethics** there).
 
 ---
 

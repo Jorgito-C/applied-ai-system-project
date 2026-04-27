@@ -86,7 +86,7 @@ In practice that meant: reading every AI-generated line before accepting it, ask
 
 **a. What you tested**
 
-I wrote five tests:
+The suite has grown since the first milestone; it now also covers the agentic planner (fallback, guardrails, and a flaky-model stress loop). The original five tests I cared about were:
 - `test_mark_complete_changes_task_status` — confirms that calling `mark_complete()` flips the flag
 - `test_add_task_increases_pet_task_count` — confirms that `pet.add_task()` actually appends to the list
 - `test_sort_tasks_by_time_returns_chronological_order` — confirms tasks come back in time order regardless of insertion order
@@ -114,3 +114,33 @@ If I had another iteration, the first thing I'd add is the ability to remove or 
 **c. Key takeaway**
 
 Working with AI on a real system taught me that the hardest part isn't generating code — it's knowing when to stop and think before accepting what was generated. AI is fast and confident, which makes it easy to keep moving. But moving fast in the wrong direction just means you have more to undo later. The most valuable skill I practiced in this project was slowing down at decision points — especially around architecture — and making sure I understood and agreed with every choice before it became load-bearing code.
+
+---
+
+## 6. Reflection and ethics (Step 5)
+
+This is the part where I stop talking about whether the code runs and ask whether it *should* run the way it does, and what breaks if someone trusts it too much.
+
+### Limitations and biases in my system
+
+The scheduler only understands what I put in the model: priority numbers, durations, and clock times. It does not know if “medication” is actually life-critical, or if “walk” is the only outlet a high-anxiety dog has. That means **priority is a human judgment** baked into a number, and the AI inherits that bias when it tries to follow the same signals.
+
+Conflict detection is deliberately narrow (same date and exact same `due_time`), so the app can still produce **physically overlapping** plans that look fine on paper. Gemini can also reorder or omit tasks in ways that feel “smart” but don’t match how a real owner would trade things off—especially if the prompt is underspecified.
+
+### Misuse, and how I would prevent it
+
+Someone could misuse this as a **replacement for a vet or a trainer**: paste in bad data, ignore conflict banners, and treat the printed plan like medical advice. I would **not** market it that way. In a real product I would add clear copy (“this is a planning aid, not medical guidance”), keep audit logs opt-in, and avoid storing sensitive health details unless I had a real security story.
+
+On the AI side, the API key is an obvious risk if it ever ships client-side; right now it’s environment-based for local runs. I’d keep secrets server-side, rate-limit calls, and strip anything that looks like PII from prompts before they leave my machine.
+
+### What surprised me when testing AI reliability
+
+I was surprised by how **boring** the failures were. The model didn’t “argue” with me—it just returned malformed JSON, repeated IDs, or IDs that didn’t exist. My guardrails caught that quietly and the fallback planner kicked in. The surprise was emotional more than technical: the dangerous failure mode isn’t a dramatic wrong answer, it’s a **plausible-looking** schedule that’s slightly wrong. That’s why I added invariant checks and a stress script, not just a happy-path screenshot.
+
+### Collaboration with AI: one helpful suggestion, one flawed suggestion
+
+**Helpful:** When I had Copilot review my early skeleton, it flagged that my `Owner` had no time budget and that `generate_daily_plan()` wasn’t actually enforcing minutes. I had written “plan” in the name but not the behavior. That was a genuine catch, not a style nit.
+
+**Flawed:** Copilot pushed for full interval-overlap conflict detection everywhere. Technically that’s “more correct,” but for my scope it would have dragged in midnight edges and tasks with no time set. I kept the simpler exact-slot warning, wrote a test for it, and documented the gap instead of swallowing complexity I wasn’t ready to own.
+
+For the Gemini work specifically, Cursor helped me wire the client and think through JSON shapes fast—but I still had to decide what the model was allowed to output (IDs only), what validation had to look like, and what “success” meant when the API was down. That division of labor felt healthy: AI accelerated typing; I owned the trust model.

@@ -17,6 +17,11 @@ if not LOGGER.handlers:
 ModelCallable = Callable[[str], str]
 
 
+def _append_trace(steps: List[Dict], label: str, detail: str = "") -> None:
+    """Record one observable step in the agent decision chain (stretch: multi-step trace)."""
+    steps.append({"step": len(steps) + 1, "label": label, "detail": detail})
+
+
 def verify_plan_result(owner: Owner, tasks: List[Task], result: Dict) -> List[str]:
     """
     Return human-readable violations; empty list means the plan is safe to show.
@@ -72,27 +77,57 @@ class AgenticPlanner:
         1) Plan candidate task IDs with AI.
         2) Validate and repair unsafe/incomplete output.
         3) Fall back to deterministic planner when needed.
+
+        Each run appends an observable ``steps`` trace (tool-style phases) for UI/CLI.
         """
+        steps: List[Dict] = []
+
         if not tasks:
+            _append_trace(steps, "Observe", "No tasks attached — nothing to schedule.")
             return {
                 "source": "none",
                 "plan": [],
                 "skipped": [],
                 "notes": ["No tasks available to schedule."],
+                "steps": steps,
             }
 
         task_map = {task.task_id: task for task in tasks}
+        incomplete = [t for t in tasks if not t.completed]
+        _append_trace(
+            steps,
+            "Tool: list_tasks",
+            f"{len(tasks)} total tasks, {len(incomplete)} incomplete (by completed flag).",
+        )
+        _append_trace(
+            steps,
+            "Tool: read_owner_budget",
+            f"time_available={owner.time_available} minutes for {owner.name!r}.",
+        )
+
         fallback_plan = Scheduler(tasks).generate_daily_plan(owner.time_available)
         fallback_ids = [task.task_id for task in fallback_plan]
+        fb_minutes = sum(t.duration for t in fallback_plan)
+        _append_trace(
+            steps,
+            "Tool: baseline_plan (Scheduler)",
+            f"Greedy fallback IDs {fallback_ids} (~{fb_minutes} min) if AI path fails.",
+        )
 
-        ai_result = self._attempt_ai_plan(owner, tasks)
+        ai_result = self._attempt_ai_plan(owner, tasks, steps)
         if ai_result is None:
             LOGGER.info("AI unavailable. Using deterministic fallback.")
+            _append_trace(
+                steps,
+                "Decide",
+                "Use deterministic Scheduler output (model unavailable or parse error).",
+            )
             return self._build_response(
                 source="fallback",
                 selected_ids=fallback_ids,
                 tasks=tasks,
                 notes=["Gemini unavailable or API key missing. Used rule-based planner."],
+                steps=steps,
             )
 
         selected_ids, ai_notes = ai_result
@@ -100,42 +135,71 @@ class AgenticPlanner:
             selected_ids=selected_ids,
             task_map=task_map,
             time_budget=owner.time_available,
+            steps=steps,
         )
 
         if not validated_ids:
             LOGGER.warning("AI output did not pass guardrails. Falling back.")
+            _append_trace(
+                steps,
+                "Decide",
+                "Guardrails emptied the plan — use Scheduler fallback IDs.",
+            )
             return self._build_response(
                 source="fallback",
                 selected_ids=fallback_ids,
                 tasks=tasks,
                 notes=ai_notes + guardrail_notes + ["Guardrails rejected AI plan."],
+                steps=steps,
             )
 
+        _append_trace(
+            steps,
+            "Decide",
+            f"Accept Gemini plan: task_ids={validated_ids}.",
+        )
         return self._build_response(
             source="gemini",
             selected_ids=validated_ids,
             tasks=tasks,
             notes=ai_notes + guardrail_notes,
+            steps=steps,
         )
 
     def _attempt_ai_plan(
-        self, owner: Owner, tasks: List[Task]
+        self, owner: Owner, tasks: List[Task], steps: List[Dict]
     ) -> Optional[Tuple[List[int], List[str]]]:
         if self.model_call is None:
+            _append_trace(steps, "Model: skip", "No model_call configured (no API key / client).")
             return None
 
         prompt = self._build_prompt(owner, tasks)
+        _append_trace(
+            steps,
+            "Tool: build_prompt",
+            f"Prompt length {len(prompt)} chars; includes {len([t for t in tasks if not t.completed])} open tasks.",
+        )
         LOGGER.info("Calling model for planning. task_count=%s", len(tasks))
+        _append_trace(steps, "Model: generate", "Requesting strict JSON: selected_task_ids, rationale, checks.")
         try:
             response_text = self.model_call(prompt)
+            preview = (response_text[:400] + "…") if len(response_text) > 400 else response_text
+            _append_trace(steps, "Model: raw_text (truncated)", preview)
             parsed = json.loads(response_text)
         except Exception as exc:  # guardrail: never crash scheduler from model failure
             LOGGER.exception("Model planning failed: %s", exc)
+            _append_trace(steps, "Parse: json_error", str(exc)[:300])
             return None
 
+        _append_trace(steps, "Parse: json_ok", f"Top-level keys: {list(parsed.keys())}")
         selected_ids = parsed.get("selected_task_ids", [])
         rationale = parsed.get("rationale", "")
         checks = parsed.get("checks", [])
+        _append_trace(
+            steps,
+            "Tool: extract_ids",
+            f"selected_task_ids type={type(selected_ids).__name__}; preview={str(selected_ids)[:200]}",
+        )
         notes = []
         if rationale:
             notes.append(f"AI rationale: {rationale}")
@@ -175,26 +239,46 @@ class AgenticPlanner:
         )
 
     def _validate_selected_ids(
-        self, selected_ids: List[int], task_map: Dict[int, Task], time_budget: int
+        self,
+        selected_ids: List[int],
+        task_map: Dict[int, Task],
+        time_budget: int,
+        steps: List[Dict],
     ) -> Tuple[List[int], List[str]]:
         notes: List[str] = []
         if not isinstance(selected_ids, list):
+            _append_trace(steps, "Validate: reject", "selected_task_ids is not a list.")
             return [], ["Guardrail: selected_task_ids was not a list."]
 
         cleaned_ids: List[int] = []
         seen = set()
+        dropped_unknown = 0
+        dropped_completed = 0
+        dropped_dup = 0
+        dropped_type = 0
         for item in selected_ids:
             if not isinstance(item, int):
+                dropped_type += 1
                 continue
             if item in seen:
+                dropped_dup += 1
                 continue
             task = task_map.get(item)
             if task is None:
+                dropped_unknown += 1
                 continue
             if task.completed:
+                dropped_completed += 1
                 continue
             cleaned_ids.append(item)
             seen.add(item)
+
+        _append_trace(
+            steps,
+            "Validate: filter_ids",
+            f"Kept {len(cleaned_ids)} id(s); dropped non-int={dropped_type}, dup={dropped_dup}, "
+            f"unknown_id={dropped_unknown}, completed={dropped_completed}.",
+        )
 
         minutes = 0
         budgeted_ids: List[int] = []
@@ -210,10 +294,20 @@ class AgenticPlanner:
 
         if not budgeted_ids:
             notes.append("Guardrail: no valid tasks remained after validation.")
+        _append_trace(
+            steps,
+            "Validate: enforce_budget",
+            f"After budget walk: ids={budgeted_ids}, planned_minutes={minutes} (cap {time_budget}).",
+        )
         return budgeted_ids, notes
 
     def _build_response(
-        self, source: str, selected_ids: List[int], tasks: List[Task], notes: List[str]
+        self,
+        source: str,
+        selected_ids: List[int],
+        tasks: List[Task],
+        notes: List[str],
+        steps: List[Dict],
     ) -> Dict:
         selected_set = set(selected_ids)
         selected = [task for task in tasks if task.task_id in selected_set]
@@ -226,6 +320,7 @@ class AgenticPlanner:
             "plan": selected_sorted,
             "skipped": skipped,
             "notes": notes,
+            "steps": steps,
         }
 
     def _build_gemini_model_call(self) -> Optional[ModelCallable]:

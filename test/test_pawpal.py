@@ -175,6 +175,7 @@ def test_agentic_planner_falls_back_without_model():
 
     assert result["source"] == "fallback"
     assert [task.task_id for task in result["plan"]] == [1]
+    assert "steps" in result and len(result["steps"]) >= 4
 
 
 def test_agentic_planner_guardrails_drop_invalid_ids():

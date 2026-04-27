@@ -211,6 +211,12 @@ if st.button("Generate schedule"):
                 st.markdown(f"- {t.task_type} for {t.pet.name} ({t.duration} min, priority {t.priority})")
 
         st.caption(f"Planner source: {ai_result['source']}")
+        if ai_result.get("steps"):
+            with st.expander("Agent trace (multi-step reasoning)", expanded=True):
+                for row in ai_result["steps"]:
+                    st.markdown(f"**{row['step']}. {row['label']}**")
+                    if row.get("detail"):
+                        st.caption(row["detail"])
         if ai_result["notes"]:
             with st.expander("Planner notes and checks"):
                 for note in ai_result["notes"]:

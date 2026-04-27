@@ -138,6 +138,12 @@ def main():
             f"{planned_task.due_time or 'Anytime'} | {planned_task.pet.name:<10} | "
             f"{planned_task.task_type:<12} | Priority {planned_task.priority}"
         )
+    if ai_result.get("steps"):
+        print("\nAgent trace (multi-step)")
+        for row in ai_result["steps"]:
+            print(f"  {row['step']}. {row['label']}")
+            if row.get("detail"):
+                print(f"     {row['detail']}")
     if ai_result["notes"]:
         print("Notes:")
         for note in ai_result["notes"]:

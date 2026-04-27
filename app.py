@@ -1,6 +1,7 @@
 import streamlit as st
 from datetime import date
 from pawpal_system import Owner, Pet, Task, Scheduler
+from ai_planner import AgenticPlanner
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -11,6 +12,8 @@ if "next_pet_id" not in st.session_state:
     st.session_state.next_pet_id = 1
 if "next_task_id" not in st.session_state:
     st.session_state.next_task_id = 1
+if "ai_planner" not in st.session_state:
+    st.session_state.ai_planner = AgenticPlanner()
 # ─────────────────────────────────────────────────────────────────────────────
 
 st.title("🐾 PawPal+")
@@ -185,8 +188,9 @@ if st.button("Generate schedule"):
         st.warning("No tasks to schedule. Add some tasks first.")
     else:
         scheduler = Scheduler(all_tasks)
-        plan = scheduler.generate_daily_plan(time_available=owner.time_available)
-        skipped = [t for t in scheduler.sort_tasks_by_priority() if t not in plan]
+        ai_result = st.session_state.ai_planner.plan_day(owner, all_tasks)
+        plan = ai_result["plan"]
+        skipped = ai_result["skipped"]
 
         minutes_used = sum(t.duration for t in plan)
         st.success(
@@ -205,3 +209,9 @@ if st.button("Generate schedule"):
             )
             for t in skipped:
                 st.markdown(f"- {t.task_type} for {t.pet.name} ({t.duration} min, priority {t.priority})")
+
+        st.caption(f"Planner source: {ai_result['source']}")
+        if ai_result["notes"]:
+            with st.expander("Planner notes and checks"):
+                for note in ai_result["notes"]:
+                    st.write(f"- {note}")

@@ -1,5 +1,6 @@
 from datetime import date, timedelta
-from pawpal_system import Pet, Task, Scheduler
+from pawpal_system import Owner, Pet, Task, Scheduler
+from ai_planner import AgenticPlanner
 
 
 def test_mark_complete_changes_task_status():
@@ -139,3 +140,78 @@ def test_conflict_detection_flags_same_date_and_time():
     assert len(warnings) == 1
     assert "Conflict detected" in warnings[0]
     assert "08:00" in warnings[0]
+
+
+def test_agentic_planner_falls_back_without_model():
+    owner = Owner(owner_id=1, name="Minh", time_available=45)
+    pet = Pet(pet_id=1, name="Sofi", species="Dog", age=3)
+    owner.add_pet(pet)
+
+    task1 = Task(
+        task_id=1,
+        pet=pet,
+        task_type="Walk",
+        duration=30,
+        priority=5,
+        due_date=date.today(),
+        due_time="08:00",
+        frequency="daily",
+    )
+    task2 = Task(
+        task_id=2,
+        pet=pet,
+        task_type="Feed",
+        duration=20,
+        priority=4,
+        due_date=date.today(),
+        due_time="09:00",
+        frequency="once",
+    )
+    owner.add_task(task1)
+    owner.add_task(task2)
+
+    planner = AgenticPlanner(model_call=None)
+    result = planner.plan_day(owner, owner.get_all_tasks())
+
+    assert result["source"] == "fallback"
+    assert [task.task_id for task in result["plan"]] == [1]
+
+
+def test_agentic_planner_guardrails_drop_invalid_ids():
+    owner = Owner(owner_id=1, name="Minh", time_available=60)
+    pet = Pet(pet_id=1, name="Eevie", species="Cat", age=5)
+    owner.add_pet(pet)
+
+    task1 = Task(
+        task_id=10,
+        pet=pet,
+        task_type="Medication",
+        duration=20,
+        priority=5,
+        due_date=date.today(),
+        due_time="07:00",
+        frequency="daily",
+    )
+    task2 = Task(
+        task_id=11,
+        pet=pet,
+        task_type="Grooming",
+        duration=30,
+        priority=3,
+        due_date=date.today(),
+        due_time="08:00",
+        frequency="once",
+    )
+    owner.add_task(task1)
+    owner.add_task(task2)
+
+    def fake_model_call(_: str) -> str:
+        return (
+            '{"selected_task_ids":[999,10,10,11],"rationale":"test","checks":["budget"]}'
+        )
+
+    planner = AgenticPlanner(model_call=fake_model_call)
+    result = planner.plan_day(owner, owner.get_all_tasks())
+
+    assert result["source"] == "gemini"
+    assert [task.task_id for task in result["plan"]] == [10, 11]

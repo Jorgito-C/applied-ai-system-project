@@ -1,5 +1,6 @@
 from datetime import date
 from pawpal_system import Owner, Pet, Task, Scheduler
+from ai_planner import AgenticPlanner
 
 
 def print_schedule(tasks):
@@ -126,6 +127,21 @@ def main():
         print(f"Loaded total tasks: {len(loaded_owner.get_all_tasks())}")
     else:
         print("Failed to load data from JSON.")
+
+    print("\nAI Agentic Plan")
+    print("=" * 40)
+    planner = AgenticPlanner()
+    ai_result = planner.plan_day(owner, owner.get_all_tasks())
+    print(f"Planner source: {ai_result['source']}")
+    for planned_task in ai_result["plan"]:
+        print(
+            f"{planned_task.due_time or 'Anytime'} | {planned_task.pet.name:<10} | "
+            f"{planned_task.task_type:<12} | Priority {planned_task.priority}"
+        )
+    if ai_result["notes"]:
+        print("Notes:")
+        for note in ai_result["notes"]:
+            print(f"- {note}")
 
 if __name__ == "__main__":
     main()

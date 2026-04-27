@@ -1,5 +1,20 @@
 # 🐾 PawPal+
 
+## Submission deliverables (course checklist)
+
+| Requirement | Where it lives |
+|---------------|----------------|
+| Functional code | `pawpal_system.py`, `ai_planner.py`, `app.py`, `main.py`, `evaluate_ai_planner.py`, `test/test_pawpal.py` |
+| Comprehensive **README.md** | This file (base project, setup, architecture, samples, testing, reliability) |
+| **Model card** (reflections / AI / biases / testing) | **`model_card.md`** |
+| System architecture diagram | Embedded in **Architecture** below + **`assets/system-architecture.png`** (+ `assets/system-architecture.mmd` source) |
+| Demo screenshot | **`assets/demo.png`** |
+| Extra UML (classes) | **`assets/class-diagram.mmd`** and **`assets/uml-class-diagram.png`** |
+
+Commit history on `main` is split into **multiple commits** (planner, architecture docs, README steps, reliability, agent trace stretch, etc.) so reviewers can follow the story in `git log`.
+
+---
+
 ## For anyone reviewing this repo
 
 **Original project (Modules 1–3).** This repo is my **PawPal+** scheduling system from CodePath’s Applied AI coursework—the early milestones focused on modeling a pet owner’s world cleanly (`Owner`, `Pet`, `Task`) and proving scheduling behavior with a `Scheduler` (sorting, filtering, conflicts, recurring tasks, and a greedy daily plan under a time budget). The goal was never “fancy UI for its own sake”; it was to make the domain logic trustworthy enough that a real person could rely on it.
@@ -12,7 +27,7 @@
 
 ## 📸 Demo
 
-![PawPal+ Demo](demo.png)
+![PawPal+ Demo](assets/demo.png)
 
 ---
 
@@ -223,7 +238,7 @@ I went into this thinking the “hard part” would be calling Gemini. The hard 
 
 The biggest mindset shift for me was treating the model like a fast intern: great for drafting a candidate plan, terrible as a source of truth. Putting validation in Python—boring, explicit code—made the AI feature feel *safer*, not scarier.
 
-If you want the longer version—design, testing, collaboration, and **ethics (Step 5)**—I wrote it up in `reflection.md` (see **section 6, Reflection and ethics** there).
+For course-style reflection prompts (collaboration, bias, testing, ethics), see **`model_card.md`**. For the longer narrative design write-up, see **`reflection.md`** (**section 6** is ethics).
 
 ---
 
@@ -277,10 +292,15 @@ ai_planner.py      # Agentic Gemini planner with validation/fallback guardrails
 evaluate_ai_planner.py  # Mock stress run + one-line reliability summary
 app.py             # Streamlit UI
 main.py            # Terminal demo of all scheduling features
-assets/            # System architecture Mermaid + optional exported screenshots
+model_card.md      # Model card: AI use, bias, testing, collaboration (submission)
+assets/
+  demo.png                 # Streamlit demo screenshot
+  system-architecture.png  # System diagram (also in README)
+  system-architecture.mmd  # Diagram source (Mermaid)
+  class-diagram.mmd        # UML class diagram source (Mermaid)
+  uml-class-diagram.png    # Class diagram export
 test/
   test_pawpal.py   # Automated test suite
 pawpal_ai.log      # Runtime AI planner logs (created automatically)
-mermaid-image      # UML class diagram (Mermaid.js)
-reflection.md      # Design decisions and AI collaboration notes
+reflection.md      # Extended design + ethics narrative
 ```

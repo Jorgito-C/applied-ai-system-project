@@ -1,5 +1,7 @@
 # PawPal+ Project Reflection
 
+For a **submission-focused model card** (AI use, biases, testing, collaboration in one place), see **`model_card.md`**. This file is the longer narrative.
+
 ## 1. System Design
 
 **a. Initial design**

@@ -1,12 +1,44 @@
 # 🐾 PawPal+
 
-A Streamlit app that helps a busy pet owner stay consistent with pet care by building a smart daily schedule based on priorities, time constraints, and task history.
+## For anyone reviewing this repo
+
+**Original project (Modules 1–3).** This repo is my **PawPal+** scheduling system from CodePath’s Applied AI coursework—the early milestones focused on modeling a pet owner’s world cleanly (`Owner`, `Pet`, `Task`) and proving scheduling behavior with a `Scheduler` (sorting, filtering, conflicts, recurring tasks, and a greedy daily plan under a time budget). The goal was never “fancy UI for its own sake”; it was to make the domain logic trustworthy enough that a real person could rely on it.
+
+**What I added for the final stretch.** I kept that core, then wired in an **agentic** layer: Gemini proposes which task IDs belong in today’s plan, my code **checks** that output (real IDs, not completed, fits the minute budget), and if anything is off—or the API is missing—the app **falls back** to the same deterministic scheduler it always had. That way the AI actually changes behavior when it’s available, but the product doesn’t fall apart when it isn’t.
+
+**Why I care about this problem.** I’ve watched people (myself included) drop balls on pet care when life gets busy. A schedule that explains what made the cut—and what didn’t—feels more honest than a black box that pretends everything fits.
 
 ---
 
 ## 📸 Demo
 
 ![PawPal+ Demo](demo.png)
+
+---
+
+## Sample interactions
+
+These are realistic outcomes I look for when I sanity-check the app myself.
+
+### 1) No API key — the app still schedules something sensible
+
+**What I did:** I set my name and “time available today” to **45 minutes**, added one dog, then added two incomplete tasks: a **30 min** walk (priority 5) and a **20 min** feeding (priority 4).
+
+**What came back:** The planner reported **`fallback`** (Gemini wasn’t configured), and the plan included **only the walk**, because it’s higher priority and the feeding would blow the 45-minute budget if I forced both. The feeding showed up under skipped / not planned for that run.
+
+That interaction matters to me because it proves the “AI upgrade” didn’t replace reliability—it sits on top of it.
+
+### 2) Same time slot for two pets — I get yelled at (in a good way)
+
+**What I did:** I gave two different pets tasks at **08:00** on the same day.
+
+**What came back:** The UI surfaced a **conflict warning** before I even generated a plan. That’s the system telling me my input is physically dubious, not quietly baking nonsense into a schedule.
+
+### 3) With `GEMINI_API_KEY` set — I can see the agent path (and still trust the guardrails)
+
+**What I did:** Same setup as (1), but I exported a Gemini key in my shell and hit **Generate schedule** again.
+
+**What came back:** The UI showed **`gemini`** as the planner source, listed the chosen tasks, and the “planner notes” expander included the model’s short rationale/checks when the API returned structured JSON. If the model ever returns junk IDs or hallucinates tasks, my guardrails strip that down; if nothing valid remains, I fall back to the greedy scheduler again.
 
 ---
 
@@ -54,9 +86,9 @@ A Streamlit app that helps a busy pet owner stay consistent with pet care by bui
 
 ## 🏗️ Architecture
 
-### System diagram (design overview)
+### System diagram (how I think about the system)
 
-The diagram below matches `assets/system-architecture.mmd` (you can export a PNG from [Mermaid Live](https://mermaid.live) into `assets/` for screenshots).
+I drew this diagram for myself first, then cleaned it up for the README. It matches `assets/system-architecture.mmd` if you want to tweak it in [Mermaid Live](https://mermaid.live).
 
 ![System architecture](assets/system-architecture.png)
 
@@ -119,6 +151,14 @@ flowchart TB
 
 ---
 
+## Design decisions (trade-offs I actually made)
+
+- **I kept conflict detection “exact slot” based** (same date + same `due_time`) instead of building full interval overlap math across durations. I’m trading away some theoretical precision for code I can reason about quickly—and I documented that limitation on purpose.
+- **I made the AI propose IDs, not mutate objects directly.** That sounds pedantic, but it’s the difference between “the model narrates a plan” and “the model is allowed to invent state.” IDs are easy to validate; free-form schedules are not.
+- **Fallback is not a separate demo path.** If Gemini fails, I still return a plan from the same interface. I didn’t want a portfolio project that only works when the network behaves.
+
+---
+
 ## 🧪 Testing
 
 Run the full test suite with:
@@ -127,7 +167,7 @@ Run the full test suite with:
 python -m pytest
 ```
 
-The suite lives in `test/test_pawpal.py` and covers five behaviors:
+The suite lives in `test/test_pawpal.py` and covers **seven** behaviors:
 
 | Test | What it checks |
 |---|---|
@@ -139,7 +179,23 @@ The suite lives in `test/test_pawpal.py` and covers five behaviors:
 | `test_agentic_planner_falls_back_without_model` | Missing model/API path safely falls back to rule-based planner |
 | `test_agentic_planner_guardrails_drop_invalid_ids` | Guardrails clean invalid model output before scheduling |
 
-**Confidence level: ★★★★☆** — core behaviors covered; edge cases (empty task list, zero time budget, JSON round-trip) are the next priority.
+### Testing summary (plain English)
+
+What worked: once I wrote small tests around the scheduler and the planner guardrails, I stopped “eyeballing” schedules every time I changed something. That sounds obvious, but it saved me from regressions when I touched the Streamlit UI.
+
+What didn’t: I still can’t fully automate “Gemini returned something weird today” without either recording live responses or mocking the API. I chose mocks for unit tests and kept logs for real runs—that’s a compromise, not perfection.
+
+What I learned: the moment I tried to prove behavior with tests, my design got simpler. If I couldn’t test it, I usually didn’t fully understand it yet.
+
+---
+
+## Reflection (what this taught me about AI)
+
+I went into this thinking the “hard part” would be calling Gemini. The hard part turned out to be **deciding what the model is allowed to change** and **how to fail gracefully** when it’s wrong.
+
+The biggest mindset shift for me was treating the model like a fast intern: great for drafting a candidate plan, terrible as a source of truth. Putting validation in Python—boring, explicit code—made the AI feature feel *safer*, not scarier.
+
+If you want the longer version (including ethics and collaboration details), I wrote it up in `reflection.md`.
 
 ---
 
@@ -149,11 +205,33 @@ The suite lives in `test/test_pawpal.py` and covers five behaviors:
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+Optional (enables Gemini planning):
+
+```bash
 export GEMINI_API_KEY="your_api_key_here"  # Windows PowerShell: $env:GEMINI_API_KEY="your_api_key_here"
+```
+
+Run the web app:
+
+```bash
 streamlit run app.py
 ```
 
 Open [http://localhost:8501](http://localhost:8501) in your browser.
+
+Run the terminal demo (scheduler + persistence + planner section):
+
+```bash
+python main.py
+```
+
+Run tests:
+
+```bash
+python -m pytest
+```
 
 ---
 

@@ -167,7 +167,7 @@ Run the full test suite with:
 python -m pytest
 ```
 
-The suite lives in `test/test_pawpal.py` and covers **seven** behaviors:
+The suite lives in `test/test_pawpal.py` and covers **eight** behaviors:
 
 | Test | What it checks |
 |---|---|
@@ -178,6 +178,7 @@ The suite lives in `test/test_pawpal.py` and covers **seven** behaviors:
 | `test_conflict_detection_flags_same_date_and_time` | Two tasks at the same slot produce a readable warning |
 | `test_agentic_planner_falls_back_without_model` | Missing model/API path safely falls back to rule-based planner |
 | `test_agentic_planner_guardrails_drop_invalid_ids` | Guardrails clean invalid model output before scheduling |
+| `test_planner_invariants_hold_under_flaky_model` | Repeated bad model output never yields an unsafe plan (budget + real tasks) |
 
 ### Testing summary (plain English)
 
@@ -186,6 +187,28 @@ What worked: once I wrote small tests around the scheduler and the planner guard
 What didn’t: I still can’t fully automate “Gemini returned something weird today” without either recording live responses or mocking the API. I chose mocks for unit tests and kept logs for real runs—that’s a compromise, not perfection.
 
 What I learned: the moment I tried to prove behavior with tests, my design got simpler. If I couldn’t test it, I usually didn’t fully understand it yet.
+
+---
+
+## Reliability & evaluation (Step 4)
+
+I wanted the AI piece to be **provable**, not just impressive in a demo. Here is how I actually check it:
+
+| Mechanism | What it does |
+|-----------|----------------|
+| **pytest** | Unit tests for the scheduler plus planner fallback and guardrails; I also added a looped test that hammers the planner with **bad JSON and bogus task IDs** and asserts the returned plan never breaks basic safety rules. |
+| **`verify_plan_result()`** in `ai_planner.py` | Small invariant checker: every task in the plan must be a real, incomplete task, IDs must not repeat, and total planned minutes must not exceed the owner’s budget. |
+| **`evaluate_ai_planner.py`** | Runnable stress script (no Gemini key needed) that cycles through flaky mock responses and prints a one-line summary you can paste into a writeup. |
+| **`pawpal_ai.log`** | When something fails at runtime (parse error, API missing, etc.), I can see *that* it failed and *why*, instead of silently guessing. |
+| **Human pass** | I still read conflict warnings and the “planner source” line in the UI before I treat a day as “locked in.” |
+
+**One-line summary (mock stress, last run):** 36 of 36 trials stayed within budget and only referenced real tasks; invalid JSON and hallucinated IDs were absorbed by guardrails or fallback scheduling. Your numbers may differ slightly if you change the mock responses or task fixture.
+
+Run the evaluator yourself:
+
+```bash
+python evaluate_ai_planner.py
+```
 
 ---
 
@@ -233,6 +256,12 @@ Run tests:
 python -m pytest
 ```
 
+Stress-check the planner (mock AI, no API key):
+
+```bash
+python evaluate_ai_planner.py
+```
+
 ---
 
 ## 🗂️ Project Structure
@@ -240,6 +269,7 @@ python -m pytest
 ```
 pawpal_system.py   # Core logic: Owner, Pet, Task, Scheduler
 ai_planner.py      # Agentic Gemini planner with validation/fallback guardrails
+evaluate_ai_planner.py  # Mock stress run + one-line reliability summary
 app.py             # Streamlit UI
 main.py            # Terminal demo of all scheduling features
 assets/            # System architecture Mermaid + optional exported screenshots

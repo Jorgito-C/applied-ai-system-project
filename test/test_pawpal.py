@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 from pawpal_system import Owner, Pet, Task, Scheduler
-from ai_planner import AgenticPlanner
+from ai_planner import AgenticPlanner, verify_plan_result
 
 
 def test_mark_complete_changes_task_status():
@@ -215,3 +215,66 @@ def test_agentic_planner_guardrails_drop_invalid_ids():
 
     assert result["source"] == "gemini"
     assert [task.task_id for task in result["plan"]] == [10, 11]
+
+
+def test_planner_invariants_hold_under_flaky_model():
+    owner = Owner(owner_id=1, name="Eval", time_available=60)
+    pet = Pet(pet_id=1, name="Sofi", species="Dog", age=3)
+    owner.add_pet(pet)
+    owner.add_task(
+        Task(
+            task_id=1,
+            pet=pet,
+            task_type="Walk",
+            duration=25,
+            priority=5,
+            due_date=date.today(),
+            due_time="08:00",
+            frequency="daily",
+        )
+    )
+    owner.add_task(
+        Task(
+            task_id=2,
+            pet=pet,
+            task_type="Feed",
+            duration=20,
+            priority=4,
+            due_date=date.today(),
+            due_time="09:00",
+            frequency="once",
+        )
+    )
+    owner.add_task(
+        Task(
+            task_id=3,
+            pet=pet,
+            task_type="Meds",
+            duration=30,
+            priority=3,
+            due_date=date.today(),
+            due_time="10:00",
+            frequency="once",
+        )
+    )
+    tasks = owner.get_all_tasks()
+
+    responses = [
+        "not valid json",
+        '{"selected_task_ids": "oops"}',
+        '{"selected_task_ids":[999,1]}',
+        '{"selected_task_ids":[1,2,3]}',
+        '{"selected_task_ids":[2,1]}',
+    ]
+    idx = 0
+
+    def flaky_model(_prompt: str) -> str:
+        nonlocal idx
+        text = responses[idx % len(responses)]
+        idx += 1
+        return text
+
+    planner = AgenticPlanner(model_call=flaky_model)
+    for _ in range(30):
+        result = planner.plan_day(owner, tasks)
+        assert verify_plan_result(owner, tasks, result) == []

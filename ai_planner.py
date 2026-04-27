@@ -17,6 +17,49 @@ if not LOGGER.handlers:
 ModelCallable = Callable[[str], str]
 
 
+def verify_plan_result(owner: Owner, tasks: List[Task], result: Dict) -> List[str]:
+    """
+    Return human-readable violations; empty list means the plan is safe to show.
+    Used by tests and evaluate_ai_planner.py to measure reliability under bad model output.
+    """
+    violations: List[str] = []
+    if not isinstance(result, dict):
+        return ["result is not a dict"]
+
+    plan = result.get("plan")
+    if plan is None:
+        return ["missing plan key"]
+    if not isinstance(plan, list):
+        return ["plan is not a list"]
+
+    task_by_id = {t.task_id: t for t in tasks}
+    total_minutes = 0
+    seen_ids: set = set()
+
+    for item in plan:
+        if not isinstance(item, Task):
+            violations.append(f"plan entry is not a Task: {type(item).__name__}")
+            continue
+        if item.task_id in seen_ids:
+            violations.append(f"duplicate task_id in plan: {item.task_id}")
+        seen_ids.add(item.task_id)
+
+        original = task_by_id.get(item.task_id)
+        if original is None:
+            violations.append(f"unknown task_id in plan: {item.task_id}")
+        elif original.completed:
+            violations.append(f"completed task_id in plan: {item.task_id}")
+
+        total_minutes += item.duration
+
+    if total_minutes > owner.time_available:
+        violations.append(
+            f"plan total {total_minutes} min exceeds owner budget {owner.time_available} min"
+        )
+
+    return violations
+
+
 class AgenticPlanner:
     """Plan pet-care tasks with an AI-first, guardrailed workflow."""
 

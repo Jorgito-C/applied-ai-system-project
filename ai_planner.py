@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from pawpal_system import Owner, Scheduler, Task
@@ -15,6 +16,7 @@ if not LOGGER.handlers:
     LOGGER.addHandler(file_handler)
 
 ModelCallable = Callable[[str], str]
+_AUTO_MODEL = object()
 
 
 def _append_trace(steps: List[Dict], label: str, detail: str = "") -> None:
@@ -68,8 +70,13 @@ def verify_plan_result(owner: Owner, tasks: List[Task], result: Dict) -> List[st
 class AgenticPlanner:
     """Plan pet-care tasks with an AI-first, guardrailed workflow."""
 
-    def __init__(self, model_call: Optional[ModelCallable] = None):
-        self.model_call = model_call or self._build_gemini_model_call()
+    def __init__(self, model_call: Optional[ModelCallable] = _AUTO_MODEL):
+        self.last_error: Optional[str] = None
+        if model_call is _AUTO_MODEL:
+            self.model_call = self._build_gemini_model_call()
+        else:
+            # Explicit None means force deterministic mode (no model).
+            self.model_call = model_call
 
     def plan_day(self, owner: Owner, tasks: List[Task]) -> Dict:
         """
@@ -81,6 +88,7 @@ class AgenticPlanner:
         Each run appends an observable ``steps`` trace (tool-style phases) for UI/CLI.
         """
         steps: List[Dict] = []
+        self.last_error = None
 
         if not tasks:
             _append_trace(steps, "Observe", "No tasks attached — nothing to schedule.")
@@ -122,11 +130,12 @@ class AgenticPlanner:
                 "Decide",
                 "Use deterministic Scheduler output (model unavailable or parse error).",
             )
+            reason = self.last_error or self._diagnose_unavailable_reason()
             return self._build_response(
                 source="fallback",
                 selected_ids=fallback_ids,
                 tasks=tasks,
-                notes=["Gemini unavailable or API key missing. Used rule-based planner."],
+                notes=[f"{reason} Used rule-based planner."],
                 steps=steps,
             )
 
@@ -185,9 +194,10 @@ class AgenticPlanner:
             response_text = self.model_call(prompt)
             preview = (response_text[:400] + "…") if len(response_text) > 400 else response_text
             _append_trace(steps, "Model: raw_text (truncated)", preview)
-            parsed = json.loads(response_text)
+            parsed = json.loads(self._extract_json_candidate(response_text))
         except Exception as exc:  # guardrail: never crash scheduler from model failure
             LOGGER.exception("Model planning failed: %s", exc)
+            self.last_error = f"Gemini error: {str(exc)}"
             _append_trace(steps, "Parse: json_error", str(exc)[:300])
             return None
 
@@ -324,21 +334,128 @@ class AgenticPlanner:
         }
 
     def _build_gemini_model_call(self) -> Optional[ModelCallable]:
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = self._resolve_api_key()
         if not api_key:
             return None
 
+        # Try modern + legacy names to avoid 404 model mismatches.
+        candidate_models = [
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-flash",
+        ]
+
+        # SDK path 1: deprecated but still common package.
         try:
             import google.generativeai as genai
-        except Exception as exc:  # pragma: no cover - import depends on environment
+            genai.configure(api_key=api_key)
+
+            def _call(prompt: str) -> str:
+                last_error: Optional[Exception] = None
+                for model_name in candidate_models:
+                    try:
+                        model = genai.GenerativeModel(model_name)
+                        response = model.generate_content(
+                            prompt,
+                            generation_config={"response_mime_type": "application/json"},
+                        )
+                        text = (response.text or "").strip()
+                        if text:
+                            return text
+                    except Exception as exc:
+                        last_error = exc
+                        LOGGER.warning("Model %s failed: %s", model_name, exc)
+                if last_error is not None:
+                    raise last_error
+                return ""
+
+            return _call
+        except Exception as exc:
             LOGGER.warning("google.generativeai unavailable: %s", exc)
+
+        # SDK path 2: new official package.
+        try:
+            from google import genai as genai_v2
+
+            client = genai_v2.Client(api_key=api_key)
+
+            def _call(prompt: str) -> str:
+                last_error: Optional[Exception] = None
+                for model_name in candidate_models:
+                    try:
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=prompt,
+                        )
+                        text = (getattr(response, "text", None) or "").strip()
+                        if text:
+                            return text
+                    except Exception as exc:
+                        last_error = exc
+                        LOGGER.warning("Model %s failed: %s", model_name, exc)
+                if last_error is not None:
+                    raise last_error
+                return ""
+
+            return _call
+        except Exception as exc:
+            LOGGER.warning("google.genai unavailable: %s", exc)
             return None
 
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+    def _resolve_api_key(self) -> Optional[str]:
+        """Read API key from env first, then local env files."""
+        env_key = os.getenv("GEMINI_API_KEY")
+        if env_key:
+            return env_key.strip()
 
-        def _call(prompt: str) -> str:
-            response = model.generate_content(prompt)
-            return (response.text or "").strip()
+        for filename in (".env.local", ".env"):
+            path = Path(filename)
+            if not path.exists():
+                continue
+            try:
+                for line in path.read_text(encoding="utf-8").splitlines():
+                    raw = line.strip()
+                    if not raw or raw.startswith("#") or "=" not in raw:
+                        continue
+                    key, value = raw.split("=", 1)
+                    if key.strip() == "GEMINI_API_KEY":
+                        return value.strip().strip('"').strip("'")
+            except Exception as exc:
+                LOGGER.warning("Failed reading %s: %s", filename, exc)
 
-        return _call
+        return None
+
+    def _extract_json_candidate(self, text: str) -> str:
+        """
+        Accept plain JSON or markdown-fenced JSON and return the best JSON substring.
+        """
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.splitlines()
+            if len(lines) >= 3:
+                cleaned = "\n".join(lines[1:-1]).strip()
+        if cleaned.startswith("{") and cleaned.endswith("}"):
+            return cleaned
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return cleaned[start : end + 1]
+        return cleaned
+
+    def _diagnose_unavailable_reason(self) -> str:
+        """Best-effort human-readable reason when model path is unavailable."""
+        if not self._resolve_api_key():
+            return "Gemini API key not found."
+
+        try:
+            import google.generativeai  # noqa: F401
+            return "Gemini client unavailable for this request."
+        except Exception:
+            pass
+
+        try:
+            from google import genai  # noqa: F401
+            return "Gemini client unavailable for this request."
+        except Exception:
+            return "Gemini SDK not installed in this Python environment."

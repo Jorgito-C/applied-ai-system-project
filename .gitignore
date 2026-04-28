@@ -4,6 +4,9 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 pawpal_ai.log
+.env.local
+.env
+.env.*
 
 # Personal demo / Loom scripts (not for repo)
 PRIVATE_walkthrough_notes.md

@@ -4,6 +4,7 @@
 
 | Requirement | Where it lives |
 |---------------|----------------|
+| Portfolio (GitHub, reflection, Loom) | **[Portfolio artifact](#portfolio-artifact)** below |
 | Functional code | `pawpal_system.py`, `ai_planner.py`, `app.py`, `main.py`, `evaluate_ai_planner.py`, `test/test_pawpal.py` |
 | Comprehensive **README.md** | This file (base project, setup, architecture, samples, testing, reliability) |
 | **Model card** (reflections / AI / biases / testing) | **`model_card.md`** |
@@ -12,6 +13,17 @@
 | Extra UML (classes) | **`assets/class-diagram.mmd`** and **`assets/uml-class-diagram.png`** |
 
 Commit history on `main` is split into **multiple commits** (planner, architecture docs, README steps, reliability, agent trace stretch, etc.) so reviewers can follow the story in `git log`.
+
+---
+
+## Portfolio artifact
+
+| Artifact | Link |
+|----------|------|
+| **Source code (GitHub)** | [github.com/Jorgito-C/applied-ai-system-project](https://github.com/Jorgito-C/applied-ai-system-project) |
+| **Loom walkthrough** (system running end-to-end) | [Watch on Loom](https://www.loom.com/share/6b9ae8ec337f4d29ad107e0c7063ed05) |
+
+**What this project says about me as an AI engineer:** I treat LLMs as proposal engines, not authorities. I design contracts the model must satisfy (structured output, real IDs, explicit budgets), validate in plain code, and ship a deterministic fallback so the product works when the API or the model flakes. I care about observability—logging, an agent trace in the UI, tests that stress bad JSON and hallucinated IDs—because “it worked in the demo” is not the same as “I can explain and defend this behavior.” PawPal+ is the kind of system I want to build: AI where it helps, guardrails where it matters, and honesty with users about what planned their day.
 
 ---
 
